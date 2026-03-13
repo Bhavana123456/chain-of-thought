@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChainOfThought — Zero-Trust AI Audit Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#6366f1', dark: '#4f46e5' },
+            surface: '#0f1117',
+            card:    '#1a1d2e',
+            border:  '#2a2d3e',
+          },
+          fontFamily: { mono: ['JetBrains Mono', 'Fira Code', 'monospace'] },
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #0f1117; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+
+    .sidebar-link { @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer text-sm font-medium; }
+    .sidebar-link.active { @apply bg-indigo-500/10 text-indigo-400 border border-indigo-500/20; }
+
+    .stat-card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 12px; padding: 20px; }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge-low  { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge-med  { background: rgba(234,179,8,0.15);  color: #facc15; }
+    .badge-high { background: rgba(239,68,68,0.15);  color: #f87171; }
+    .badge-ok   { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .badge-err  { background: rgba(239,68,68,0.15);  color: #f87171; }
+    .badge-blk  { background: rgba(239,68,68,0.25);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+
+    .risk-bar { height: 4px; border-radius: 2px; background: #2a2d3e; overflow: hidden; }
+    .risk-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+
+    .chat-bubble { max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 14px; }
+    .chat-user { background: #6366f1; color: white; margin-left: auto; border-bottom-right-radius: 2px; }
+    .chat-assistant { background: #1a1d2e; border: 1px solid #2a2d3e; border-bottom-left-radius: 2px; }
+
+    .table-row { border-bottom: 1px solid #2a2d3e; transition: background 0.15s; }
+    .table-row:hover { background: rgba(255,255,255,0.02); }
+
+    .spinner { width: 20px; height: 20px; border: 2px solid rgba(99,102,241,0.3); border-top-color: #6366f1; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2d3e; border-radius: 3px; }
+
+    .tab { padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #64748b; cursor: pointer; transition: all 0.15s; }
+    .tab.active { background: #6366f1; color: white; }
+
+    input, select, textarea { background: #1a1d2e; border: 1px solid #2a2d3e; color: #e2e8f0; border-radius: 8px; outline: none; transition: border-color 0.15s; }
+    input:focus, select:focus, textarea:focus { border-color: #6366f1; }
+    textarea { resize: vertical; }
+
+    .glow { box-shadow: 0 0 20px rgba(99,102,241,0.15); }
+
+    #toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; }
+    .toast-item { background: #1a1d2e; border: 1px solid #2a2d3e; padding: 12px 16px; border-radius: 10px; margin-top: 8px; font-size: 13px; animation: slideIn 0.2s ease; }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    code { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+    pre { background: #0a0d14; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; overflow-x: auto; }
+  </style>
+</head>
+<body class="min-h-screen flex">
+
+<!-- ── Sidebar ─────────────────────────────────────────────────────────────── -->
+<aside class="w-60 flex-shrink-0 flex flex-col border-r border-border h-screen sticky top-0" style="background:#111320">
+  <div class="p-5 border-b border-border">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-sm">C</div>
+      <div>
+        <div class="font-semibold text-white text-sm">ChainOfThought</div>
+        <div class="text-xs text-slate-500">Zero-Trust Audit</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+    <div class="text-xs text-slate-600 uppercase font-semibold px-4 pt-2 pb-1">Overview</div>
+    <a class="sidebar-link active" onclick="navigate('dashboard')">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16"/></svg>
+      Dashboard
+    </a>
+    <a class="sidebar-link" onclick="navigate('chat')">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 16a2 2 0 01-2 2H7l-4 4V6a2 2 0 012-2h14a2 2 0 012 2v10z"/></svg>
+      AI Chat
+    </a>
+    <div class="text-xs text-slate-600 uppercase font-semibold px-4 pt-3 pb-1">Audit</div>
+    <a class="sidebar-link" onclick="navigate('audit')">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      Audit Log
+    </a>
+    <a class="sidebar-link" onclick="navigate('models')">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+      Model Registry
+    </a>
+  </nav>
+
+  <div class="p-4 border-t border-border">
+    <div class="flex items-center gap-2 text-xs text-slate-500">
+      <div class="pulse-dot" id="ollamaStatusDot"></div>
+      <span id="ollamaStatusText">Checking Ollama…</span>
+    </div>
+    <div class="text-xs text-slate-600 mt-1" id="langfuseStatus"></div>
+  </div>
+</aside>
+
+<!-- ── Main ────────────────────────────────────────────────────────────────── -->
+<main class="flex-1 overflow-y-auto">
+
+  <!-- ══ DASHBOARD ══════════════════════════════════════════════════════════ -->
+  <div id="sec-dashboard" class="section active p-6 space-y-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Dashboard</h1>
+        <p class="text-sm text-slate-400">Real-time AI audit overview</p>
+      </div>
+      <button onclick="loadDashboard()" class="flex items-center gap-2 text-sm text-slate-400 hover:text-white border border-border px-3 py-1.5 rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115.8-3.1M20 15a9 9 0 01-15.8 3.1"/></svg>
+        Refresh
+      </button>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="statCards">
+      <div class="stat-card animate-pulse"><div class="h-4 bg-border rounded w-20 mb-3"></div><div class="h-8 bg-border rounded w-16"></div></div>
+      <div class="stat-card animate-pulse"><div class="h-4 bg-border rounded w-20 mb-3"></div><div class="h-8 bg-border rounded w-16"></div></div>
+      <div class="stat-card animate-pulse"><div class="h-4 bg-border rounded w-20 mb-3"></div><div class="h-8 bg-border rounded w-16"></div></div>
+      <div class="stat-card animate-pulse"><div class="h-4 bg-border rounded w-20 mb-3"></div><div class="h-8 bg-border rounded w-16"></div></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- Risk Distribution -->
+      <div class="stat-card lg:col-span-1">
+        <h3 class="text-sm font-semibold text-white mb-4">Risk Distribution</h3>
+        <div id="riskDist" class="space-y-3">
+          <div class="h-4 bg-border rounded animate-pulse"></div>
+          <div class="h-4 bg-border rounded animate-pulse"></div>
+          <div class="h-4 bg-border rounded animate-pulse"></div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="stat-card lg:col-span-2">
+        <h3 class="text-sm font-semibold text-white mb-4">Recent Activity</h3>
+        <div id="recentActivity" class="space-y-2 text-sm">
+          <div class="h-4 bg-border rounded animate-pulse"></div>
+          <div class="h-4 bg-border rounded animate-pulse"></div>
+          <div class="h-4 bg-border rounded animate-pulse"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Extra stat row -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="statCards2"></div>
+  </div>
+
+  <!-- ══ CHAT ════════════════════════════════════════════════════════════════ -->
+  <div id="sec-chat" class="section h-screen flex flex-col">
+    <!-- Chat header -->
+    <div class="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <div>
+          <h2 class="font-semibold text-white text-sm">AI Chat</h2>
+          <p class="text-xs text-slate-500">All interactions are audited</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <select id="modelSelect" class="text-sm px-3 py-1.5 text-slate-300">
+          <option value="">Loading models…</option>
+        </select>
+        <button onclick="clearChat()" class="text-xs text-slate-500 hover:text-white border border-border px-3 py-1.5 rounded-lg transition-colors">Clear</button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4">
+      <div class="flex justify-center">
+        <div class="text-center py-12">
+          <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M21 16a2 2 0 01-2 2H7l-4 4V6a2 2 0 012-2h14a2 2 0 012 2v10z"/></svg>
+          </div>
+          <p class="text-slate-400 font-medium">Start a conversation</p>
+          <p class="text-slate-600 text-sm mt-1">Messages are traced with Langfuse and risk-scored</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk indicator -->
+    <div id="riskIndicator" class="px-4 py-2 border-t border-border text-xs text-slate-500 flex items-center gap-2" style="display:none!important">
+      <span>Last risk:</span>
+      <span id="lastRiskBadge"></span>
+      <span id="lastRiskFlags" class="text-slate-600"></span>
+    </div>
+
+    <!-- Input -->
+    <div class="p-4 border-t border-border flex-shrink-0">
+      <div class="flex gap-3">
+        <textarea
+          id="chatInput"
+          rows="2"
+          placeholder="Ask anything… (Shift+Enter for newline, Enter to send)"
+          class="flex-1 px-4 py-2.5 text-sm rounded-xl"
+          onkeydown="handleChatKey(event)"
+        ></textarea>
+        <button
+          id="sendBtn"
+          onclick="sendChat()"
+          class="px-5 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-medium text-sm transition-colors flex items-center gap-2"
+        >
+          <span id="sendBtnLabel">Send</span>
+          <div id="sendSpinner" class="spinner hidden"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ AUDIT LOG ═══════════════════════════════════════════════════════════ -->
+  <div id="sec-audit" class="section p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Audit Log</h1>
+        <p class="text-sm text-slate-400">All recorded AI interactions</p>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="stat-card">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <input id="auditSearch" type="text" placeholder="Search prompt/response…" class="px-3 py-2 text-sm" oninput="debounceAudit()">
+        <select id="auditModel" class="px-3 py-2 text-sm" onchange="loadAudit()">
+          <option value="">All models</option>
+        </select>
+        <select id="auditStatus" class="px-3 py-2 text-sm" onchange="loadAudit()">
+          <option value="">All statuses</option>
+          <option value="success">Success</option>
+          <option value="error">Error</option>
+          <option value="blocked">Blocked</option>
+        </select>
+        <select id="auditRisk" class="px-3 py-2 text-sm" onchange="loadAudit()">
+          <option value="">All risk levels</option>
+          <option value="low">Low (&lt; 0.3)</option>
+          <option value="medium">Medium (0.3–0.7)</option>
+          <option value="high">High (&gt; 0.7)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="stat-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border text-slate-500 text-xs uppercase">
+              <th class="text-left px-4 py-3 font-medium">Time</th>
+              <th class="text-left px-4 py-3 font-medium">Model</th>
+              <th class="text-left px-4 py-3 font-medium">Prompt</th>
+              <th class="text-left px-4 py-3 font-medium">Risk</th>
+              <th class="text-left px-4 py-3 font-medium">Status</th>
+              <th class="text-left px-4 py-3 font-medium">Latency</th>
+              <th class="text-left px-4 py-3 font-medium">Tokens</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody id="auditTableBody">
+            <tr><td colspan="8" class="text-center py-12 text-slate-600">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Pagination -->
+      <div class="flex items-center justify-between px-4 py-3 border-t border-border text-sm text-slate-400">
+        <span id="auditInfo"></span>
+        <div class="flex items-center gap-2">
+          <button onclick="auditPage(-1)" id="prevBtn" class="px-3 py-1 border border-border rounded-lg hover:bg-white/5 disabled:opacity-30 transition-colors" disabled>← Prev</button>
+          <span id="auditPageLabel" class="text-xs">1</span>
+          <button onclick="auditPage(1)" id="nextBtn" class="px-3 py-1 border border-border rounded-lg hover:bg-white/5 disabled:opacity-30 transition-colors" disabled>Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail modal -->
+    <div id="auditModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden" onclick="closeModal(event)">
+      <div class="flex items-center justify-center h-full p-4">
+        <div class="stat-card w-full max-w-2xl max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-white">Audit Detail</h3>
+            <button onclick="document.getElementById('auditModal').classList.add('hidden')" class="text-slate-500 hover:text-white">✕</button>
+          </div>
+          <div id="auditModalContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODELS ══════════════════════════════════════════════════════════════ -->
+  <div id="sec-models" class="section p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Model Registry</h1>
+        <p class="text-sm text-slate-400">Ollama models and usage statistics</p>
+      </div>
+      <button onclick="loadModels()" class="flex items-center gap-2 text-sm text-slate-400 hover:text-white border border-border px-3 py-1.5 rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115.8-3.1M20 15a9 9 0 01-15.8 3.1"/></svg>
+        Sync
+      </button>
+    </div>
+
+    <div id="modelsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="stat-card animate-pulse h-40"></div>
+      <div class="stat-card animate-pulse h-40"></div>
+      <div class="stat-card animate-pulse h-40"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ── Toast container ─────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const API = '';
+let currentSection = 'dashboard';
+let chatHistory = [];
+let chatSessionId = crypto.randomUUID();
+let auditCurrentPage = 1;
+let auditTotalPages = 1;
+let auditDebounceTimer = null;
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function navigate(section) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+  document.getElementById('sec-' + section).classList.add('active');
+  document.querySelector(`[onclick="navigate('${section}')"]`).classList.add('active');
+  currentSection = section;
+
+  if (section === 'dashboard') loadDashboard();
+  if (section === 'audit') { loadAudit(); populateModelFilter(); }
+  if (section === 'models') loadModels();
+  if (section === 'chat') populateChatModelSelect();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const colors = { info: '#818cf8', success: '#4ade80', error: '#f87171', warn: '#facc15' };
+  const el = document.createElement('div');
+  el.className = 'toast-item';
+  el.style.borderLeftColor = colors[type] || '#818cf8';
+  el.style.borderLeftWidth = '3px';
+  el.innerHTML = `<span style="color:${colors[type]}">${type.toUpperCase()}</span>  ${msg}`;
+  document.getElementById('toast').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw err;
+  }
+  return res.json();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const [stats, risk, recent] = await Promise.all([
+      apiFetch('/api/dashboard/stats'),
+      apiFetch('/api/dashboard/risk-distribution'),
+      apiFetch('/api/dashboard/recent-activity?limit=8'),
+    ]);
+    renderStatCards(stats);
+    renderRiskDist(risk);
+    renderRecentActivity(recent);
+  } catch (e) {
+    toast('Failed to load dashboard', 'error');
+  }
+}
+
+function renderStatCards(s) {
+  const cards = [
+    { label: 'Total Traces', value: s.total_traces.toLocaleString(), icon: '🔍', color: '#818cf8' },
+    { label: 'Traces Today',  value: s.traces_today.toLocaleString(),  icon: '📅', color: '#34d399' },
+    { label: 'Active Models', value: s.active_models, icon: '🤖', color: '#60a5fa' },
+    { label: 'High-Risk',     value: s.high_risk_count, icon: '⚠️', color: '#f87171' },
+  ];
+  document.getElementById('statCards').innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">${c.label}</span>
+        <span class="text-lg">${c.icon}</span>
+      </div>
+      <div class="text-3xl font-bold" style="color:${c.color}">${c.value}</div>
+    </div>
+  `).join('');
+
+  const cards2 = [
+    { label: 'Avg Latency',  value: s.avg_latency_ms.toFixed(0) + 'ms', icon: '⚡', color: '#fbbf24' },
+    { label: 'Total Tokens', value: fmtNum(s.total_tokens), icon: '🪙', color: '#a78bfa' },
+    { label: 'Error Rate',   value: (s.error_rate * 100).toFixed(1) + '%', icon: '❌', color: '#f87171' },
+    { label: 'Blocked',      value: s.blocked_count, icon: '🚫', color: '#fb923c' },
+  ];
+  document.getElementById('statCards2').innerHTML = cards2.map(c => `
+    <div class="stat-card">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">${c.label}</span>
+        <span class="text-lg">${c.icon}</span>
+      </div>
+      <div class="text-3xl font-bold" style="color:${c.color}">${c.value}</div>
+    </div>
+  `).join('');
+}
+
+function renderRiskDist(r) {
+  const total = r.low + r.medium + r.high || 1;
+  const pct = n => Math.round(n / total * 100);
+  document.getElementById('riskDist').innerHTML = `
+    <div>
+      <div class="flex justify-between text-xs mb-1"><span class="text-green-400 font-medium">Low</span><span class="text-slate-500">${r.low} (${pct(r.low)}%)</span></div>
+      <div class="risk-bar"><div class="risk-fill bg-green-500" style="width:${pct(r.low)}%"></div></div>
+    </div>
+    <div>
+      <div class="flex justify-between text-xs mb-1"><span class="text-yellow-400 font-medium">Medium</span><span class="text-slate-500">${r.medium} (${pct(r.medium)}%)</span></div>
+      <div class="risk-bar"><div class="risk-fill bg-yellow-500" style="width:${pct(r.medium)}%"></div></div>
+    </div>
+    <div>
+      <div class="flex justify-between text-xs mb-1"><span class="text-red-400 font-medium">High</span><span class="text-slate-500">${r.high} (${pct(r.high)}%)</span></div>
+      <div class="risk-bar"><div class="risk-fill bg-red-500" style="width:${pct(r.high)}%"></div></div>
+    </div>
+  `;
+}
+
+function renderRecentActivity(items) {
+  if (!items.length) {
+    document.getElementById('recentActivity').innerHTML = '<p class="text-slate-600 text-center py-4">No activity yet</p>';
+    return;
+  }
+  document.getElementById('recentActivity').innerHTML = items.map(i => `
+    <div class="table-row flex items-center gap-3 py-2 px-1 rounded-lg cursor-pointer" onclick="navigate('audit')">
+      <span class="${riskBadgeClass(i.risk_score)} badge">${riskLabel(i.risk_score)}</span>
+      <span class="text-slate-300 flex-1 truncate text-xs">${escHtml(i.prompt_preview)}</span>
+      <span class="text-slate-500 text-xs font-mono">${i.model.split(':')[0]}</span>
+      <span class="text-slate-600 text-xs">${i.latency_ms.toFixed(0)}ms</span>
+    </div>
+  `).join('');
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+async function populateChatModelSelect() {
+  try {
+    const models = await apiFetch('/api/dashboard/ollama/models');
+    const sel = document.getElementById('modelSelect');
+    if (!models.length) { sel.innerHTML = '<option>No models found</option>'; return; }
+    sel.innerHTML = models.map(m => `<option value="${m.name}">${m.name} (${m.size_gb}GB)</option>`).join('');
+  } catch {
+    document.getElementById('modelSelect').innerHTML = '<option value="llama3.2">llama3.2</option>';
+  }
+}
+
+function handleChatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+function clearChat() {
+  chatHistory = [];
+  chatSessionId = crypto.randomUUID();
+  document.getElementById('chatMessages').innerHTML = `
+    <div class="flex justify-center">
+      <div class="text-center py-12">
+        <p class="text-slate-500 text-sm">Chat cleared. New session started.</p>
+      </div>
+    </div>`;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const model = document.getElementById('modelSelect').value;
+  if (!model) { toast('Select a model first', 'warn'); return; }
+
+  // Add user message
+  chatHistory.push({ role: 'user', content: text });
+  appendChatBubble('user', text);
+  input.value = '';
+
+  // Loading state
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  document.getElementById('sendBtnLabel').textContent = 'Sending';
+  document.getElementById('sendSpinner').classList.remove('hidden');
+  const loadingEl = appendChatBubble('assistant', '<div class="spinner"></div>', true);
+
+  try {
+    const res = await apiFetch('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        model,
+        messages: chatHistory,
+        session_id: chatSessionId,
+      }),
+    });
+
+    loadingEl.remove();
+    chatHistory.push({ role: 'assistant', content: res.message.content });
+    appendChatBubble('assistant', res.message.content);
+
+    // Show risk
+    const ri = document.getElementById('riskIndicator');
+    ri.style.removeProperty('display');
+    ri.style.display = 'flex';
+    document.getElementById('lastRiskBadge').innerHTML = `<span class="${riskBadgeClass(res.risk_score)} badge">${riskLabel(res.risk_score)} (${res.risk_score})</span>`;
+    document.getElementById('lastRiskFlags').textContent = res.risk_flags.length ? `• ${res.risk_flags.join(', ')}` : '';
+
+    if (res.risk_score >= 0.7) toast(`High-risk response detected (${res.risk_score})`, 'warn');
+
+  } catch (err) {
+    loadingEl.remove();
+    const msg = err.detail?.error || err.detail || 'Failed to get response';
+    appendChatBubble('assistant', `<span class="text-red-400">Error: ${escHtml(String(msg))}</span>`);
+    toast(msg, 'error');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('sendBtnLabel').textContent = 'Send';
+    document.getElementById('sendSpinner').classList.add('hidden');
+  }
+}
+
+function appendChatBubble(role, content, isLoading = false) {
+  const container = document.getElementById('chatMessages');
+  // Remove welcome message
+  const welcome = container.querySelector('.flex.justify-center');
+  if (welcome) welcome.remove();
+
+  const wrap = document.createElement('div');
+  wrap.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble chat-${role}`;
+  if (isLoading) {
+    bubble.innerHTML = content;
+  } else {
+    bubble.innerHTML = formatMessage(content);
+  }
+  wrap.appendChild(bubble);
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+  return wrap;
+}
+
+function formatMessage(text) {
+  // Basic markdown-like formatting
+  return escHtml(text)
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g, '<code style="background:#0a0d14;padding:1px 4px;border-radius:3px">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+async function loadAudit() {
+  const search = document.getElementById('auditSearch').value;
+  const model  = document.getElementById('auditModel').value;
+  const status = document.getElementById('auditStatus').value;
+  const risk   = document.getElementById('auditRisk').value;
+
+  let url = `/api/audit?page=${auditCurrentPage}&page_size=15`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (model)  url += `&model=${encodeURIComponent(model)}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  if (risk === 'low')    url += '&risk_max=0.3';
+  if (risk === 'medium') url += '&risk_min=0.3&risk_max=0.7';
+  if (risk === 'high')   url += '&risk_min=0.7';
+
+  try {
+    const data = await apiFetch(url);
+    auditTotalPages = Math.ceil(data.total / 15) || 1;
+    renderAuditTable(data);
+  } catch (e) {
+    document.getElementById('auditTableBody').innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-400">Failed to load audit logs</td></tr>';
+  }
+}
+
+function debounceAudit() {
+  clearTimeout(auditDebounceTimer);
+  auditDebounceTimer = setTimeout(() => { auditCurrentPage = 1; loadAudit(); }, 400);
+}
+
+function auditPage(dir) {
+  const next = auditCurrentPage + dir;
+  if (next < 1 || next > auditTotalPages) return;
+  auditCurrentPage = next;
+  loadAudit();
+}
+
+async function populateModelFilter() {
+  try {
+    const models = await apiFetch('/api/dashboard/models');
+    const sel = document.getElementById('auditModel');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All models</option>' + models.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+    sel.value = current;
+  } catch {}
+}
+
+function renderAuditTable(data) {
+  const tbody = document.getElementById('auditTableBody');
+
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-12 text-slate-600">No records found</td></tr>';
+  } else {
+    tbody.innerHTML = data.items.map(row => `
+      <tr class="table-row">
+        <td class="px-4 py-3 text-slate-500 text-xs font-mono whitespace-nowrap">${fmtTime(row.created_at)}</td>
+        <td class="px-4 py-3"><span class="font-mono text-xs text-indigo-400">${escHtml(row.model.split(':')[0])}</span></td>
+        <td class="px-4 py-3 text-slate-300 text-xs max-w-xs truncate">${escHtml(row.prompt.substring(0, 80))}${row.prompt.length > 80 ? '…' : ''}</td>
+        <td class="px-4 py-3">
+          <div class="flex items-center gap-2">
+            <span class="${riskBadgeClass(row.risk_score)} badge">${riskLabel(row.risk_score)}</span>
+            <span class="text-xs text-slate-600 font-mono">${row.risk_score.toFixed(2)}</span>
+          </div>
+        </td>
+        <td class="px-4 py-3"><span class="${statusBadgeClass(row.status)} badge">${row.status}</span></td>
+        <td class="px-4 py-3 text-slate-500 text-xs font-mono">${row.latency_ms.toFixed(0)}ms</td>
+        <td class="px-4 py-3 text-slate-500 text-xs">${(row.prompt_tokens + row.completion_tokens).toLocaleString()}</td>
+        <td class="px-4 py-3">
+          <button onclick='showAuditDetail(${JSON.stringify(row)})' class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">View</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  document.getElementById('auditInfo').textContent = `${data.total.toLocaleString()} records`;
+  document.getElementById('auditPageLabel').textContent = `${auditCurrentPage} / ${auditTotalPages}`;
+  document.getElementById('prevBtn').disabled = auditCurrentPage <= 1;
+  document.getElementById('nextBtn').disabled = auditCurrentPage >= auditTotalPages;
+}
+
+function showAuditDetail(row) {
+  const modal = document.getElementById('auditModal');
+  document.getElementById('auditModalContent').innerHTML = `
+    <div class="space-y-4 text-sm">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">ID</div><div class="font-mono text-xs text-indigo-400 break-all">${row.id}</div></div>
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">Session</div><div class="font-mono text-xs break-all">${row.session_id}</div></div>
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">Model</div><div class="text-indigo-400 font-mono text-xs">${escHtml(row.model)}</div></div>
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">Status</div><span class="${statusBadgeClass(row.status)} badge">${row.status}</span></div>
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">Risk Score</div><span class="${riskBadgeClass(row.risk_score)} badge">${row.risk_score.toFixed(3)} — ${riskLabel(row.risk_score)}</span></div>
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">Latency</div><div class="text-white font-mono">${row.latency_ms.toFixed(1)}ms</div></div>
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">Tokens</div><div class="text-white text-xs">in: ${row.prompt_tokens} / out: ${row.completion_tokens}</div></div>
+        <div class="stat-card p-3"><div class="text-slate-500 text-xs mb-1">Trace ID</div><div class="font-mono text-xs text-slate-400 break-all">${row.trace_id || 'N/A'}</div></div>
+      </div>
+      ${row.risk_flags?.length ? `<div class="stat-card p-3"><div class="text-slate-500 text-xs mb-2">Risk Flags</div><div class="flex flex-wrap gap-2">${row.risk_flags.map(f => `<span class="badge badge-high">${f}</span>`).join('')}</div></div>` : ''}
+      <div class="stat-card p-3">
+        <div class="text-slate-500 text-xs mb-2">Prompt</div>
+        <pre class="text-slate-300 text-xs whitespace-pre-wrap break-words">${escHtml(row.prompt)}</pre>
+      </div>
+      ${row.response ? `<div class="stat-card p-3"><div class="text-slate-500 text-xs mb-2">Response</div><pre class="text-slate-300 text-xs whitespace-pre-wrap break-words">${escHtml(row.response)}</pre></div>` : ''}
+      <div class="text-slate-600 text-xs text-right">${new Date(row.created_at).toLocaleString()}</div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('auditModal')) {
+    document.getElementById('auditModal').classList.add('hidden');
+  }
+}
+
+// ── Models ────────────────────────────────────────────────────────────────────
+async function loadModels() {
+  try {
+    const [ollamaModels, stats] = await Promise.all([
+      apiFetch('/api/dashboard/ollama/models'),
+      apiFetch('/api/dashboard/models'),
+    ]);
+
+    const statsMap = {};
+    stats.forEach(s => statsMap[s.name] = s);
+
+    const grid = document.getElementById('modelsGrid');
+    if (!ollamaModels.length) {
+      grid.innerHTML = `
+        <div class="stat-card col-span-3 text-center py-12">
+          <p class="text-slate-500">No models found.</p>
+          <p class="text-xs text-slate-600 mt-2">Run <code>ollama pull llama3.2</code> to add a model.</p>
+        </div>`;
+      return;
+    }
+
+    grid.innerHTML = ollamaModels.map(m => {
+      const s = statsMap[m.name] || {};
+      return `
+        <div class="stat-card space-y-4 glow">
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="font-semibold text-white">${escHtml(m.name.split(':')[0])}</div>
+              <div class="text-xs text-slate-500 font-mono mt-0.5">${escHtml(m.name)}</div>
+            </div>
+            <span class="badge badge-ok">active</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="stat-card p-2">
+              <div class="text-slate-500 mb-1">Size</div>
+              <div class="text-white font-mono">${m.size_gb} GB</div>
+            </div>
+            <div class="stat-card p-2">
+              <div class="text-slate-500 mb-1">Calls</div>
+              <div class="text-white font-mono">${(s.total_calls || 0).toLocaleString()}</div>
+            </div>
+            <div class="stat-card p-2">
+              <div class="text-slate-500 mb-1">Avg Latency</div>
+              <div class="text-white font-mono">${(s.avg_latency_ms || 0).toFixed(0)}ms</div>
+            </div>
+            <div class="stat-card p-2">
+              <div class="text-slate-500 mb-1">Last Used</div>
+              <div class="text-white text-xs">${s.last_used ? fmtTime(s.last_used) : '—'}</div>
+            </div>
+          </div>
+          <button onclick="document.getElementById('modelSelect').value='${escHtml(m.name)}'; navigate('chat')"
+            class="w-full py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-medium transition-colors border border-indigo-500/20">
+            Chat with this model →
+          </button>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    toast('Failed to load models', 'error');
+  }
+}
+
+// ── Ollama health ─────────────────────────────────────────────────────────────
+async function checkOllamaHealth() {
+  try {
+    const data = await apiFetch('/api/dashboard/ollama/health');
+    const dot  = document.getElementById('ollamaStatusDot');
+    const text = document.getElementById('ollamaStatusText');
+    if (data.status === 'ok') {
+      dot.style.background = '#4ade80';
+      text.textContent = 'Ollama connected';
+    } else {
+      dot.style.background = '#f87171';
+      text.textContent = 'Ollama unreachable';
+    }
+  } catch {
+    document.getElementById('ollamaStatusDot').style.background = '#f87171';
+    document.getElementById('ollamaStatusText').textContent = 'Ollama unreachable';
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function riskLabel(score) {
+  if (score >= 0.7) return 'high';
+  if (score >= 0.3) return 'medium';
+  return 'low';
+}
+function riskBadgeClass(score) {
+  if (score >= 0.7) return 'badge-high';
+  if (score >= 0.3) return 'badge-med';
+  return 'badge-low';
+}
+function statusBadgeClass(s) {
+  if (s === 'success') return 'badge-ok';
+  if (s === 'blocked') return 'badge-blk';
+  return 'badge-err';
+}
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+function fmtNum(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+checkOllamaHealth();
+setInterval(checkOllamaHealth, 30000);
+loadDashboard();
+populateChatModelSelect();
+</script>
+</body>
+</html>
