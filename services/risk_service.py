@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, List, Tuple
 """
 Zero-Trust risk scoring for every AI interaction.
 Analyses prompts and responses for policy violations.
@@ -18,7 +20,7 @@ RISK_RULES: list[tuple[str, float, str]] = [
 ]
 
 
-def compute_risk(prompt: str, response: str | None = None) -> tuple[float, list[str]]:
+def compute_risk(prompt: str, response: Optional[str] = None) -> Tuple[float, List[str]]:
     """
     Returns (risk_score 0–1, list_of_flags).
     Checks both prompt and response.

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Chat router — sends messages to Ollama, records audit log, traces with Langfuse."""
 
 import uuid

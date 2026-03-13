@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, Dict, List
 """
 Langfuse tracing service.
 Wraps the Langfuse Python SDK to record every LLM call as a trace → generation.
@@ -41,15 +43,15 @@ class LangfuseService:
         self,
         *,
         session_id: str,
-        user_id: str | None,
+        user_id: Optional[str],
         model: str,
-        messages: list[dict],
+        messages: List[Dict],
         response_text: str,
         prompt_tokens: int,
         completion_tokens: int,
         latency_ms: float,
-        metadata: dict | None = None,
-    ) -> str | None:
+        metadata: Optional[Dict] = None,
+    ) -> Optional[str]:
         """
         Create a Langfuse trace + generation and return the trace_id.
         Returns None if Langfuse is not configured.

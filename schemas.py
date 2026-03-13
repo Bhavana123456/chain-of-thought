@@ -1,7 +1,8 @@
 """Pydantic request/response schemas."""
+from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -14,24 +15,24 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     model: str = "llama3.2"
-    messages: list[ChatMessage]
-    session_id: str | None = None
-    user_id: str | None = None
+    messages: List[ChatMessage]
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
     stream: bool = False
-    options: dict[str, Any] = {}
+    options: Dict[str, Any] = {}
 
 
 class ChatResponse(BaseModel):
     id: str
     session_id: str
-    trace_id: str | None
+    trace_id: Optional[str]
     model: str
     message: ChatMessage
     prompt_tokens: int
     completion_tokens: int
     latency_ms: float
     risk_score: float
-    risk_flags: list[str]
+    risk_flags: List[str]
     status: str
 
 
@@ -40,17 +41,17 @@ class ChatResponse(BaseModel):
 class AuditLogOut(BaseModel):
     id: str
     session_id: str
-    trace_id: str | None
+    trace_id: Optional[str]
     model: str
     prompt: str
-    response: str | None
+    response: Optional[str]
     prompt_tokens: int
     completion_tokens: int
     latency_ms: float
     risk_score: float
-    risk_flags: list[str]
+    risk_flags: List[str]
     status: str
-    user_id: str | None
+    user_id: Optional[str]
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -60,7 +61,7 @@ class AuditListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-    items: list[AuditLogOut]
+    items: List[AuditLogOut]
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -77,9 +78,9 @@ class DashboardStats(BaseModel):
 
 
 class RiskDistribution(BaseModel):
-    low: int      # 0.0 – 0.3
-    medium: int   # 0.3 – 0.7
-    high: int     # 0.7 – 1.0
+    low: int
+    medium: int
+    high: int
 
 
 class ModelStat(BaseModel):
@@ -88,7 +89,7 @@ class ModelStat(BaseModel):
     total_calls: int
     avg_latency_ms: float
     is_active: bool
-    last_used: datetime | None
+    last_used: Optional[datetime]
 
     model_config = {"from_attributes": True}
 
@@ -98,4 +99,4 @@ class ModelStat(BaseModel):
 class OllamaModel(BaseModel):
     name: str
     size_gb: float
-    modified_at: str | None = None
+    modified_at: Optional[str] = None

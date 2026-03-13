@@ -1,9 +1,10 @@
+from __future__ import annotations
+from typing import Optional, Dict, List, AsyncGenerator
 """Ollama API client — wraps the local Ollama REST server."""
 
 import os
 import time
 import json
-from typing import AsyncGenerator
 import httpx
 from dotenv import load_dotenv
 
@@ -21,7 +22,7 @@ class OllamaService:
             timeout=httpx.Timeout(OLLAMA_TIMEOUT),
         )
 
-    async def list_models(self) -> list[dict]:
+    async def list_models(self) -> List[Dict]:
         """Return all models pulled into Ollama."""
         try:
             resp = await self.client.get("/api/tags")
@@ -43,8 +44,8 @@ class OllamaService:
     async def chat(
         self,
         model: str,
-        messages: list[dict],
-        options: dict | None = None,
+        messages: List[Dict],
+        options: Optional[Dict] = None,
     ) -> tuple[str, int, int, float]:
         """
         Non-streaming chat.
@@ -72,8 +73,8 @@ class OllamaService:
     async def chat_stream(
         self,
         model: str,
-        messages: list[dict],
-        options: dict | None = None,
+        messages: List[Dict],
+        options: Optional[Dict] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Streaming chat — yields text chunks.
@@ -109,7 +110,7 @@ class OllamaService:
             return False
 
     @staticmethod
-    def _estimate_tokens(messages: list[dict]) -> int:
+    def _estimate_tokens(messages: List[Dict]) -> int:
         total = sum(len(m.get("content", "").split()) for m in messages)
         return max(1, int(total * 1.3))
 
