@@ -29,6 +29,10 @@ class AuditLog(Base):
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
     risk_flags: Mapped[List] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="success")
+    compliance_status: Mapped[str] = mapped_column(String(20), default="verified")  # verified | flagged | needs_review
+    checksum: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # SHA-256 of prompt+response
+    thought_chain: Mapped[Optional[List]] = mapped_column(JSON, nullable=True)   # reasoning steps
+    rag_context: Mapped[Optional[List]] = mapped_column(JSON, nullable=True)     # retrieved context chunks
     user_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     metadata_: Mapped[Dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

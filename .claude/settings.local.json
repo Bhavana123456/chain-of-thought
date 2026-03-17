@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(sed -i '' '1s/^/from __future__ import annotations\\\\n/' \"$f\")",
+      "Bash(done)",
+      "Bash(python3 -c \"import models; import schemas; from routers import chat, audit, dashboard; print\\(''All imports OK''\\)\")"
+    ]
+  }
+}

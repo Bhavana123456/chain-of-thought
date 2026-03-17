@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sed -i '' '1s/^/from __future__ import annotations\\\\nfrom typing import Optional, List, Tuple\\\\n/' services/risk_service.py)",
+      "Bash(sed -i '' 's/str | None/Optional[str]/g; s/tuple\\\\[float, list\\\\[str\\\\]\\\\]/Tuple[float, List[str]]/g' services/risk_service.py)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -X POST http://localhost:8000/api/chat -H \"Content-Type: application/json\" -d '{\"\"\"\"model\"\"\"\":\"\"\"\"llama3.2:latest\"\"\"\",\"\"\"\"messages\"\"\"\":[{\"\"\"\"role\"\"\"\":\"\"\"\"user\"\"\"\",\"\"\"\"content\"\"\"\":\"\"\"\"hello\"\"\"\"}],\"\"\"\"user_id\"\"\"\":\"\"\"\"test\"\"\"\"}')"
+    ]
+  }
+}

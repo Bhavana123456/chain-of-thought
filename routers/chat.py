@@ -2,6 +2,7 @@ from __future__ import annotations
 """Chat router — sends messages to Ollama, records audit log, traces with Langfuse."""
 
 import uuid
+import hashlib
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -92,6 +93,10 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     if trace_id:
         langfuse_svc.score(trace_id, "risk_score", risk_score)
 
+    # ── Compute SHA-256 checksum ──────────────────────────────────────────────
+    checksum = hashlib.sha256(f"{user_prompt}{response_text}".encode()).hexdigest()
+    compliance_status = "flagged" if risk_score >= 0.7 else ("needs_review" if risk_score >= 0.3 else "verified")
+
     # ── Write audit log ───────────────────────────────────────────────────────
     log = AuditLog(
         session_id=session_id,
@@ -105,6 +110,8 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
         risk_score=risk_score,
         risk_flags=risk_flags,
         status=status,
+        compliance_status=compliance_status,
+        checksum=checksum,
         user_id=req.user_id,
     )
     db.add(log)
@@ -128,12 +135,15 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
         trace_id=trace_id,
         model=req.model,
         message={"role": "assistant", "content": response_text},
+        response=response_text,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         latency_ms=round(latency_ms, 2),
         risk_score=risk_score,
         risk_flags=risk_flags,
         status=status,
+        compliance_status=compliance_status,
+        checksum=checksum,
     )
 
 

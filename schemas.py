@@ -28,12 +28,15 @@ class ChatResponse(BaseModel):
     trace_id: Optional[str]
     model: str
     message: ChatMessage
+    response: str                  # convenience alias = message.content
     prompt_tokens: int
     completion_tokens: int
     latency_ms: float
     risk_score: float
     risk_flags: List[str]
     status: str
+    compliance_status: str
+    checksum: Optional[str]
 
 
 # ── Audit Log ─────────────────────────────────────────────────────────────────
@@ -51,6 +54,10 @@ class AuditLogOut(BaseModel):
     risk_score: float
     risk_flags: List[str]
     status: str
+    compliance_status: str
+    checksum: Optional[str]
+    thought_chain: Optional[List]
+    rag_context: Optional[List]
     user_id: Optional[str]
     created_at: datetime
 

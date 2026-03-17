@@ -69,13 +69,28 @@ app.include_router(audit.router)
 app.include_router(dashboard.router)
 
 
-# ── Serve SPA ─────────────────────────────────────────────────────────────────
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# ── Serve React SPA (built output lands in static/dist/) ──────────────────────
+import os
 
+_DIST = os.path.join(os.path.dirname(__file__), "static", "dist")
+_LEGACY = os.path.join(os.path.dirname(__file__), "static")
 
-@app.get("/", include_in_schema=False)
-async def serve_spa():
-    return FileResponse("static/index.html")
+if os.path.isdir(_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_DIST, "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        file_path = os.path.join(_DIST, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(_DIST, "index.html"))
+else:
+    # Fallback: old single-file static UI
+    app.mount("/static", StaticFiles(directory=_LEGACY), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def serve_spa_legacy():
+        return FileResponse(os.path.join(_LEGACY, "index.html"))
 
 
 @app.get("/health")
