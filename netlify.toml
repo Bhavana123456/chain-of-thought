@@ -5,7 +5,7 @@
 
 [[redirects]]
   from   = "/api/*"
-  to     = "https://your-railway-url.up.railway.app/api/:splat"
+  to     = "https://web-production-eff92.up.railway.app/api/:splat"
   status = 200
   force  = true
 
