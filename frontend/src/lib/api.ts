@@ -87,7 +87,7 @@ export const api = {
     req<RecentActivity[]>(`/api/dashboard/recent-activity?limit=${limit}`),
   modelStats: () => req<ModelStat[]>("/api/dashboard/models"),
   ollamaHealth: () =>
-    req<{ status: string; url: string }>("/api/dashboard/ollama/health"),
+    req<{ status: string; provider: string; url: string }>("/api/dashboard/ollama/health"),
   ollamaModels: () => req<OllamaModel[]>("/api/dashboard/ollama/models"),
 
   auditList: (params: Record<string, string | number | undefined>) => {

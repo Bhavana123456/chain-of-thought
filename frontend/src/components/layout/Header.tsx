@@ -13,6 +13,7 @@ export default function Header({ title, subtitle }: Props) {
   });
 
   const online = health?.status === "ok";
+  const provider = health?.provider === "groq" ? "Groq" : "Ollama";
 
   return (
     <header className="h-14 border-b border-border bg-card/60 backdrop-blur px-6 flex items-center justify-between sticky top-0 z-10">
@@ -28,7 +29,7 @@ export default function Header({ title, subtitle }: Props) {
           <span className="text-muted">live</span>
         </div>
 
-        {/* Ollama status */}
+        {/* LLM provider status */}
         <div
           className={`flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-full border ${
             online
@@ -37,7 +38,7 @@ export default function Header({ title, subtitle }: Props) {
           }`}
         >
           {online ? <Wifi size={11} /> : <WifiOff size={11} />}
-          <span>Ollama {online ? "online" : "offline"}</span>
+          <span>{provider} {online ? "online" : "offline"}</span>
         </div>
 
         {/* Trust badge */}

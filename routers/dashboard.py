@@ -129,8 +129,11 @@ async def get_ollama_models(db: AsyncSession = Depends(get_db)):
 
 @router.get("/ollama/health")
 async def ollama_health():
+    from services.ollama_service import GROQ_API_KEY
+    if GROQ_API_KEY:
+        return {"status": "ok", "provider": "groq", "url": "https://api.groq.com"}
     healthy = await ollama.health()
-    return {"status": "ok" if healthy else "unreachable", "url": ollama.base_url}
+    return {"status": "ok" if healthy else "unreachable", "provider": "ollama", "url": ollama.base_url}
 
 
 @router.get("/recent-activity")
