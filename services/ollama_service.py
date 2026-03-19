@@ -11,7 +11,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+OLLAMA_TIMEOUT  = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+
+# ── Groq cloud fallback (used when GROQ_API_KEY is set) ───────────────────────
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+# Map Ollama model names → Groq model names
+GROQ_MODEL_MAP = {
+    "llama3.2":         "llama-3.1-8b-instant",
+    "llama3.2:latest":  "llama-3.1-8b-instant",
+    "llama3":           "llama3-8b-8192",
+    "llama3:latest":    "llama3-8b-8192",
+    "mistral":          "mixtral-8x7b-32768",
+    "mistral:latest":   "mixtral-8x7b-32768",
+}
 
 
 class OllamaService:
@@ -48,9 +61,12 @@ class OllamaService:
         options: Optional[Dict] = None,
     ) -> tuple[str, int, int, float]:
         """
-        Non-streaming chat.
+        Non-streaming chat. Falls back to Groq if GROQ_API_KEY is set.
         Returns: (response_text, prompt_tokens, completion_tokens, latency_ms)
         """
+        if GROQ_API_KEY:
+            return await self._groq_chat(model, messages)
+
         payload = {
             "model": model,
             "messages": messages,
@@ -69,6 +85,37 @@ class OllamaService:
         completion_tokens = usage.get("completion_tokens", self._estimate_tokens_text(response_text))
 
         return response_text, prompt_tokens, completion_tokens, latency_ms
+
+    async def _groq_chat(
+        self,
+        model: str,
+        messages: List[Dict],
+    ) -> tuple[str, int, int, float]:
+        """Call Groq's OpenAI-compatible API."""
+        groq_model = GROQ_MODEL_MAP.get(model, "llama-3.1-8b-instant")
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {"model": groq_model, "messages": messages}
+        t0 = time.perf_counter()
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{GROQ_BASE_URL}/chat/completions",
+                json=payload,
+                headers=headers,
+            )
+        latency_ms = (time.perf_counter() - t0) * 1000
+        resp.raise_for_status()
+        data = resp.json()
+        response_text = data["choices"][0]["message"]["content"]
+        usage = data.get("usage", {})
+        return (
+            response_text,
+            usage.get("prompt_tokens", self._estimate_tokens(messages)),
+            usage.get("completion_tokens", self._estimate_tokens_text(response_text)),
+            latency_ms,
+        )
 
     async def chat_stream(
         self,
